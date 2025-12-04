@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import path
 from django.http import JsonResponse, HttpResponseForbidden
 from django.conf import settings
+from django.views.decorators.csrf import csrf_exempt
 
 from workflows.views import list_workflows
 from workflows.management.commands.fetch_workflows import Command as FetchCommand
@@ -15,10 +16,14 @@ def health(request):
     return JsonResponse({"status": "ok"})
 
 
+@csrf_exempt                     # ✅ REQUIRED
 def trigger_fetch(request, source, country):
     secret = request.headers.get("X-Trigger-Secret")
     if secret != settings.TRIGGER_SECRET:
         return HttpResponseForbidden("Forbidden")
+
+    if request.method != "POST":
+        return HttpResponseForbidden("POST required")
 
     try:
         FetchCommand().handle(source=source, country=country)
