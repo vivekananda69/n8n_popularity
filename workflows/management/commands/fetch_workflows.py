@@ -1,24 +1,34 @@
 from django.core.management.base import BaseCommand
-from workflows.collectors import collect_youtube_for_country, collect_forum, collect_trends, upsert_workflows
+from django.utils import timezone
+from workflows.models import Workflow
+from workflows.collectors import collect_youtube_for_country, collect_forum, collect_trends
 
 class Command(BaseCommand):
-    help = "Fetch n8n workflows from YouTube, Forum, and Google Trends"
+    help = "Fetch workflows from YouTube, Forum, and Google Trends for US + IN"
 
     def handle(self, *args, **options):
+        self.stdout.write("🚀 Starting workflow collection...")
+
         all_items = []
+
         for country in ["US", "IN"]:
-            print("Collecting YouTube for", country)
-            yt = collect_youtube_for_country(country, max_per_kw=8)
-            print("Collected", len(yt), "youtube items")
-            all_items += yt
-            print("Collecting Forum for", country)
+            yt = collect_youtube_for_country(country)
             fr = collect_forum(country)
-            print("Collected", len(fr), "forum items")
-            all_items += fr
-            print("Collecting Trends for", country)
             tr = collect_trends(country)
-            print("Collected", len(tr), "trends items")
-            all_items += tr
-        print("Upserting into DB..")
-        upsert_workflows(all_items)
-        print("Done. Total items:", len(all_items))
+
+            all_items += yt + fr + tr
+
+        for item in all_items:
+            Workflow.objects.update_or_create(
+                workflow=item["workflow"],
+                platform=item["platform"],
+                country=item["country"],
+                defaults={
+                    "source_url": item["source_url"],
+                    "popularity_metrics": item["metrics"],
+                    "popularity_score": item["score"],
+                    "last_seen": timezone.now(),
+                }
+            )
+
+        self.stdout.write(self.style.SUCCESS(f"✔ Stored {len(all_items)} workflows"))
